@@ -36,6 +36,8 @@ export function startAutosave() {
       s.edges === prev.edges &&
       s.title === prev.title &&
       s.background === prev.background &&
+      s.view === prev.view &&
+      s.rotation === prev.rotation &&
       s.chat === prev.chat &&
       s.apiHistory === prev.apiHistory &&
       s.project === prev.project

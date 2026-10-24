@@ -2,6 +2,7 @@ import { Bold, MousePointer2 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { ICONS } from '../lib/icons';
+import { nodeDepth } from '../lib/iso';
 import { applyPalette, PALETTES } from '../lib/palettes';
 import { SHAPE_CATALOG } from '../lib/shapes';
 import { edgeStyle, nodeStyle, type ArrowType, type EdgeStyle, type LineType, type NodeStyle } from '../lib/types';
@@ -41,6 +42,7 @@ export function StylePanel() {
   const nodes = useEditor(useShallow((s) => s.nodes.filter((n) => n.selected)));
   const edges = useEditor(useShallow((s) => s.edges.filter((e) => e.selected)));
   const background = useEditor((s) => s.background);
+  const view = useEditor((s) => s.view);
   const st = useEditor.getState;
 
   if (!nodes.length && !edges.length) {
@@ -179,6 +181,24 @@ export function StylePanel() {
               <div className="sp-inline">
                 <Num value={first.width ?? 0} min={20} max={4000} onChange={(v) => st().setNodes((ns) => ns.map((n) => (n.id === first.id ? { ...n, width: v } : n)))} suffix="宽" />
                 <Num value={first.height ?? 0} min={20} max={4000} onChange={(v) => st().setNodes((ns) => ns.map((n) => (n.id === first.id ? { ...n, height: v } : n)))} suffix="高" />
+              </div>
+            </Row>
+          )}
+          {view === '3d' && first.data.shape !== 'text' && (
+            <Row label="3D 高度">
+              <div className="sp-inline">
+                <Num
+                  value={nodeDepth({ id: first.id, label: '', shape: first.data.shape, x: 0, y: 0, width: first.width ?? 0, height: first.height ?? 0, style: first.data.style })}
+                  min={1}
+                  max={400}
+                  onChange={(v) => setN({ depth: v })}
+                  suffix="px"
+                />
+                {!!first.data.style.depth && (
+                  <button className="btn btn-sm btn-ghost" onClick={() => setN({ depth: undefined })}>
+                    自动
+                  </button>
+                )}
               </div>
             </Row>
           )}

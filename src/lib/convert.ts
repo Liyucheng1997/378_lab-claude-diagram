@@ -36,7 +36,7 @@ export function nodeSize(n: ShapeRFNode): { width: number; height: number } {
 export function toModel(
   nodes: ShapeRFNode[],
   edges: SmartRFEdge[],
-  meta: Pick<Diagram, 'title' | 'background' | 'direction'>,
+  meta: Pick<Diagram, 'title' | 'background' | 'direction' | 'view' | 'rotation'>,
 ): Diagram {
   const abs = absolutePositions(nodes);
   const ids = new Set(nodes.map((n) => n.id));

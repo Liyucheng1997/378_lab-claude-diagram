@@ -20,6 +20,7 @@ import { loadSettings } from '../lib/storage';
 import { nodeStyle, type ShapeType } from '../lib/types';
 import { useEditor } from '../store';
 import { CodePeek } from './CodePeek';
+import { IsoCanvas } from './IsoCanvas';
 import { ShapeNode } from './ShapeNode';
 import { SmartEdge } from './SmartEdge';
 import { Toolbar } from './Toolbar';
@@ -41,10 +42,10 @@ export function Canvas(props: { theme: 'light' | 'dark' }) {
   const rfRef = useRef(rf);
   rfRef.current = rf;
   useEffect(() => {
-    if (!s.fitTick) return;
+    if (!s.fitTick || s.view === '3d') return;
     const t = setTimeout(() => rfRef.current.fitView(FIT), 80);
     return () => clearTimeout(t);
-  }, [s.fitTick]);
+  }, [s.fitTick]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** 拖动结束时：节点中心落进哪个分组，就成为它的子节点；拖出分组则脱离 */
   const reparent = useCallback(
@@ -117,76 +118,80 @@ export function Canvas(props: { theme: 'light' | 'dark' }) {
   const bg = s.background || undefined;
   return (
     <div className="canvas-wrap card" style={bg ? { background: bg } : undefined}>
-      <ReactFlow<ShapeRFNode, SmartRFEdge>
-        nodes={s.nodes}
-        edges={s.edges}
-        nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
-        onNodesChange={s.onNodesChange}
-        onEdgesChange={s.onEdgesChange}
-        onConnect={s.onConnect}
-        onNodeDragStart={() => useEditor.getState().snapshot()}
-        onSelectionDragStart={() => useEditor.getState().snapshot()}
-        onNodeDragStop={(_, __, nodes) => reparent(nodes)}
-        onSelectionDragStop={(_, nodes) => reparent(nodes)}
-        onEdgeDoubleClick={(_, edge: Edge) => useEditor.getState().setEditingEdge(edge.id)}
-        onNodeClick={(e, node) => {
-          // 带代码位置的节点：单击查看代码，Alt+单击直接在编辑器中打开
-          const ref = node.data.ref;
-          if (!ref || e.shiftKey || e.ctrlKey || e.metaKey) return;
-          const root = useEditor.getState().project?.rootPath;
-          if (e.altKey && root) openInEditor(loadSettings().editor, root, ref.path, ref.line);
-          else {
-            useCode.getState().openPeek({ ref, label: node.data.label, nodeId: node.id });
-            revealBesidePeek(node.id);
-          }
-        }}
-        onPaneClick={() => useCode.getState().closePeek()}
-        onDragOver={(e) => {
-          if (e.dataTransfer.types.includes(DND_MIME)) {
-            e.preventDefault();
-            e.dataTransfer.dropEffect = 'copy';
-          }
-        }}
-        onDrop={onDrop}
-        connectionMode={ConnectionMode.Loose}
-        connectionLineType={ConnectionLineType.SmoothStep}
-        connectionRadius={36}
-        deleteKeyCode={['Delete', 'Backspace']}
-        multiSelectionKeyCode={['Shift', 'Meta', 'Control']}
-        selectionOnDrag
-        panOnDrag={[1, 2]}
-        panOnScroll
-        zoomOnPinch
-        selectionMode={SelectionMode.Partial}
-        snapToGrid
-        snapGrid={[10, 10]}
-        minZoom={0.1}
-        maxZoom={4}
-        colorMode={props.theme}
-        proOptions={{ hideAttribution: true }}
-        fitView
-        fitViewOptions={{ padding: FIT_PADDING, maxZoom: 1.1 }}
-      >
-        <Background variant={BackgroundVariant.Dots} gap={20} size={1.2} />
-        {minimap && (
-          <MiniMap
-            pannable
-            zoomable
-            nodeColor={(n) => {
-              const d = (n as ShapeRFNode).data;
-              const st = nodeStyle(d.shape, d.style);
-              return st.fill === 'none' ? 'transparent' : st.fill;
-            }}
-            nodeStrokeColor={(n) => nodeStyle((n as ShapeRFNode).data.shape, (n as ShapeRFNode).data.style).stroke}
-            nodeStrokeWidth={2}
-            className="minimap"
-          />
-        )}
-      </ReactFlow>
+      {s.view === '3d' ? (
+        <IsoCanvas theme={props.theme} />
+      ) : (
+        <ReactFlow<ShapeRFNode, SmartRFEdge>
+          nodes={s.nodes}
+          edges={s.edges}
+          nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
+          onNodesChange={s.onNodesChange}
+          onEdgesChange={s.onEdgesChange}
+          onConnect={s.onConnect}
+          onNodeDragStart={() => useEditor.getState().snapshot()}
+          onSelectionDragStart={() => useEditor.getState().snapshot()}
+          onNodeDragStop={(_, __, nodes) => reparent(nodes)}
+          onSelectionDragStop={(_, nodes) => reparent(nodes)}
+          onEdgeDoubleClick={(_, edge: Edge) => useEditor.getState().setEditingEdge(edge.id)}
+          onNodeClick={(e, node) => {
+            // 带代码位置的节点：单击查看代码，Alt+单击直接在编辑器中打开
+            const ref = node.data.ref;
+            if (!ref || e.shiftKey || e.ctrlKey || e.metaKey) return;
+            const root = useEditor.getState().project?.rootPath;
+            if (e.altKey && root) openInEditor(loadSettings().editor, root, ref.path, ref.line);
+            else {
+              useCode.getState().openPeek({ ref, label: node.data.label, nodeId: node.id });
+              revealBesidePeek(node.id);
+            }
+          }}
+          onPaneClick={() => useCode.getState().closePeek()}
+          onDragOver={(e) => {
+            if (e.dataTransfer.types.includes(DND_MIME)) {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = 'copy';
+            }
+          }}
+          onDrop={onDrop}
+          connectionMode={ConnectionMode.Loose}
+          connectionLineType={ConnectionLineType.SmoothStep}
+          connectionRadius={36}
+          deleteKeyCode={['Delete', 'Backspace']}
+          multiSelectionKeyCode={['Shift', 'Meta', 'Control']}
+          selectionOnDrag
+          panOnDrag={[1, 2]}
+          panOnScroll
+          zoomOnPinch
+          selectionMode={SelectionMode.Partial}
+          snapToGrid
+          snapGrid={[10, 10]}
+          minZoom={0.1}
+          maxZoom={4}
+          colorMode={props.theme}
+          proOptions={{ hideAttribution: true }}
+          fitView
+          fitViewOptions={{ padding: FIT_PADDING, maxZoom: 1.1 }}
+        >
+          <Background variant={BackgroundVariant.Dots} gap={20} size={1.2} />
+          {minimap && (
+            <MiniMap
+              pannable
+              zoomable
+              nodeColor={(n) => {
+                const d = (n as ShapeRFNode).data;
+                const st = nodeStyle(d.shape, d.style);
+                return st.fill === 'none' ? 'transparent' : st.fill;
+              }}
+              nodeStrokeColor={(n) => nodeStyle((n as ShapeRFNode).data.shape, (n as ShapeRFNode).data.style).stroke}
+              nodeStrokeWidth={2}
+              className="minimap"
+            />
+          )}
+        </ReactFlow>
+      )}
       <Toolbar />
       <CodePeek />
-      <ZoomControls minimap={minimap} onToggleMinimap={() => setMinimap(!minimap)} />
+      {s.view !== '3d' && <ZoomControls minimap={minimap} onToggleMinimap={() => setMinimap(!minimap)} />}
       {s.nodes.length === 0 && <EmptyHint />}
     </div>
   );

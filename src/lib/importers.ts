@@ -33,7 +33,14 @@ export function importJSON(text: string, fallbackTitle = '导入的图表'): Dia
     label: e.label,
     style: e.style ?? {},
   }));
-  return { ...base, background: d.background ?? '', direction: d.direction ?? 'DOWN', nodes, edges };
+  return {
+    ...base,
+    background: d.background ?? '',
+    direction: d.direction ?? 'DOWN',
+    ...(d.view === '3d' ? { view: '3d' as const, rotation: Number(d.rotation) || 0 } : {}),
+    nodes,
+    edges,
+  };
 }
 
 // ---------- draw.io ----------

@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { depthOf } from './convert';
 import { computeEdgePath, type Rect } from './geometry';
 import { ICONS } from './icons';
+import { isoToSVG } from './iso';
 import { labelBox, shapePrimitives, textWidth, wrapText, type Primitive } from './shapes';
 import { edgeStyle, nodeStyle, type Diagram, type DiagramEdge, type DiagramNode } from './types';
 
@@ -103,6 +104,8 @@ function edgeSVG(e: DiagramEdge, rects: Map<string, Rect>, labels: string[]): st
 }
 
 export function diagramToSVG(d: Diagram, opts: { background?: string | null; padding?: number } = {}) {
+  // 3D 视图导出所见即所得的立体图
+  if (d.view === '3d') return isoToSVG(d, opts);
   const pad = opts.padding ?? 32;
   const b = diagramBounds(d);
   const width = Math.ceil(b.width + pad * 2);

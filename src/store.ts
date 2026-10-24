@@ -13,7 +13,7 @@ import type { ProjectMeta } from './code/types';
 import { fromModel, sortByDepth, toModel, type EdgeData, type ShapeData, type ShapeRFNode, type SmartRFEdge } from './lib/convert';
 import { SHAPE_META } from './lib/shapes';
 import { currentDocId, loadDoc, setCurrentDocId } from './lib/storage';
-import { emptyDiagram, uid, type Diagram, type Direction, type ShapeType } from './lib/types';
+import { emptyDiagram, uid, type Diagram, type Direction, type ShapeType, type ViewMode } from './lib/types';
 
 interface Snap {
   nodes: ShapeRFNode[];
@@ -28,6 +28,10 @@ export interface EditorState {
   title: string;
   background: string;
   direction: Direction;
+  /** 2D / 3D 视图（随图表保存） */
+  view: ViewMode;
+  /** 3D 视角旋转步数 0–3 */
+  rotation: number;
   nodes: ShapeRFNode[];
   edges: SmartRFEdge[];
   past: Snap[];
@@ -60,6 +64,8 @@ export interface EditorState {
   selectAll(): void;
   setTitle(t: string): void;
   setBackground(c: string): void;
+  setView(v: ViewMode): void;
+  rotate(step: number): void;
   setEditingEdge(id: string | null): void;
   requestFit(): void;
   setChat(fn: (c: ChatItem[]) => ChatItem[]): void;
@@ -84,6 +90,8 @@ function initialState() {
     title: d.title,
     background: d.background,
     direction: d.direction,
+    view: d.view ?? '2d',
+    rotation: d.rotation ?? 0,
     nodes,
     edges,
     chat: rec?.chat ?? [],
@@ -137,12 +145,12 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   getDiagram() {
     const s = get();
-    return toModel(s.nodes, s.edges, { title: s.title, background: s.background, direction: s.direction });
+    return toModel(s.nodes, s.edges, { title: s.title, background: s.background, direction: s.direction, view: s.view, rotation: s.rotation });
   },
   setDiagram(d, opts = {}) {
     if (opts.record !== false) get().snapshot();
     const { nodes, edges } = fromModel(d);
-    set({ nodes, edges, title: d.title, background: d.background, direction: d.direction });
+    set({ nodes, edges, title: d.title, background: d.background, direction: d.direction, view: d.view ?? get().view, rotation: d.rotation ?? get().rotation });
     if (opts.fit) get().requestFit();
   },
 
@@ -253,6 +261,15 @@ export const useEditor = create<EditorState>((set, get) => ({
     get().snapshot();
     set({ background: c });
   },
+  setView(v) {
+    if (v === get().view) return;
+    set({ view: v });
+    get().requestFit();
+  },
+  rotate(step) {
+    set({ rotation: (((get().rotation + step) % 4) + 4) % 4 });
+    get().requestFit();
+  },
   setEditingEdge(id) {
     set({ editingEdge: id });
   },
@@ -285,6 +302,8 @@ export const useEditor = create<EditorState>((set, get) => ({
       title: d.title,
       background: d.background,
       direction: d.direction,
+      view: d.view ?? '2d',
+      rotation: d.rotation ?? 0,
       chat: rec?.chat ?? [],
       apiHistory: rec?.apiHistory ?? [],
       project: rec?.project ?? null,

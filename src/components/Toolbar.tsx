@@ -4,7 +4,7 @@ import { autoLayout } from '../lib/layout';
 import { applyPalette, PALETTES } from '../lib/palettes';
 import type { Direction } from '../lib/types';
 import { useEditor } from '../store';
-import { Popover, toast } from './ui';
+import { Popover, Seg, toast } from './ui';
 
 const DIRS: { d: Direction; label: string; icon: typeof ArrowDown }[] = [
   { d: 'DOWN', label: '自上而下', icon: ArrowDown },
@@ -25,6 +25,7 @@ export function Toolbar() {
   const canRedo = useEditor((s) => s.future.length > 0);
   const hasSel = useEditor((s) => s.nodes.some((n) => n.selected) || s.edges.some((e) => e.selected));
   const direction = useEditor((s) => s.direction);
+  const view = useEditor((s) => s.view);
   const [layoutEl, setLayoutEl] = useState<HTMLElement | null>(null);
   const [paletteEl, setPaletteEl] = useState<HTMLElement | null>(null);
   const [open, setOpen] = useState<'layout' | 'palette' | null>(null);
@@ -32,6 +33,16 @@ export function Toolbar() {
 
   return (
     <div className="float-toolbar" role="toolbar">
+      <Seg
+        small
+        value={view}
+        onChange={(v) => st().setView(v)}
+        options={[
+          { value: '2d', label: '2D', title: '平面视图：可连线、改字、调整大小' },
+          { value: '3d', label: '3D', title: '立体视图（等轴测）：可拖动节点、旋转视角' },
+        ]}
+      />
+      <span className="tb-sep" />
       <button className="icon-btn" disabled={!canUndo} onClick={() => st().undo()} title="撤销 (Ctrl+Z)" aria-label="撤销">
         <Undo2 size={16} />
       </button>

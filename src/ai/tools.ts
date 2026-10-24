@@ -5,7 +5,7 @@ import type { CodeRef } from '../code/types';
 import { ICONS, ICON_NAMES } from '../lib/icons';
 import { autoLayout } from '../lib/layout';
 import { autoSize } from '../lib/shapes';
-import { ARROWS, DIRECTIONS, LINE_TYPES, nodeStyle, SHAPES, type Diagram, type DiagramEdge, type DiagramNode } from '../lib/types';
+import { ARROWS, DIRECTIONS, LINE_TYPES, nodeStyle, SHAPES, VIEWS, type Diagram, type DiagramEdge, type DiagramNode } from '../lib/types';
 
 // ---------- 参数结构（Zod 同时用于生成 JSON Schema 和校验模型输出） ----------
 
@@ -18,6 +18,7 @@ const NodeStyleZ = z
     bold: z.boolean().describe('文字加粗'),
     strokeWidth: z.number().min(0).max(10).describe('边框粗细，默认 1.5'),
     dashed: z.boolean().describe('虚线边框'),
+    depth: z.number().min(0).max(400).describe('3D 视图中的立体高度，省略或 0 为按图形自动（普通方块约 24）'),
   })
   .partial();
 
@@ -61,6 +62,7 @@ export const CreateDiagramZ = z.object({
   layout: z.enum(['auto', 'manual']).optional().describe('auto(默认)=自动分层布局，坐标会被忽略；manual=使用你给出的 x/y/width/height'),
   direction: z.enum(DIRECTIONS).optional().describe('自动布局方向：DOWN 自上而下(默认) / RIGHT 自左向右 / UP / LEFT'),
   background: z.string().optional().describe('画布背景色，空字符串表示默认'),
+  view: z.enum(VIEWS).optional().describe('2d 平面图 / 3d 等轴测立体图；省略则保持当前视图'),
   nodes: z.array(NodeInZ).min(1),
   edges: z.array(EdgeInZ).optional(),
 });
@@ -96,6 +98,7 @@ export const EditDiagramZ = z.object({
     .optional()
     .describe('批量统一样式（在单个修改之前执行）'),
   background: z.string().optional().describe('画布背景色'),
+  view: z.enum(VIEWS).optional().describe('切换 2d 平面图 / 3d 等轴测立体图'),
   title: z.string().optional(),
   relayout: z.boolean().optional().describe('修改后是否整体重新自动布局（会覆盖现有位置）'),
   direction: z.enum(DIRECTIONS).optional().describe('重新布局时的方向'),
@@ -288,6 +291,8 @@ export async function runCreate(input: CreateDiagramInput, current: Diagram, res
     title: input.title ?? current.title,
     background: input.background ?? current.background,
     direction: input.direction ?? 'DOWN',
+    view: input.view ?? current.view,
+    rotation: current.rotation,
     nodes: built.map(strip),
     edges,
   };
@@ -415,6 +420,8 @@ export async function runEdit(input: EditDiagramInput, current: Diagram, resolve
     title: input.title ?? current.title,
     background: input.background ?? current.background,
     direction,
+    view: input.view ?? current.view,
+    rotation: current.rotation,
     nodes,
     edges,
   };
@@ -432,6 +439,7 @@ export async function runEdit(input: EditDiagramInput, current: Diagram, resolve
   if (stats.del) parts.push(`删除 ${stats.del} 个元素`);
   if (rs) parts.push('批量更新了样式');
   if (input.background !== undefined) parts.push('更新了背景');
+  if (input.view && input.view !== current.view) parts.push(input.view === '3d' ? '切换为 3D 视图' : '切换为 2D 视图');
   if (relayout) parts.push('重新自动布局');
   return {
     diagram: d,
@@ -446,6 +454,7 @@ export function diagramForPrompt(d: Diagram): string {
   return JSON.stringify({
     title: d.title,
     direction: d.direction,
+    view: d.view === '3d' ? '3d' : undefined,
     background: d.background || undefined,
     nodes: d.nodes.map((n) => ({
       id: n.id,

@@ -31,6 +31,9 @@ export type LineType = (typeof LINE_TYPES)[number];
 export const DIRECTIONS = ['DOWN', 'RIGHT', 'UP', 'LEFT'] as const;
 export type Direction = (typeof DIRECTIONS)[number];
 
+export const VIEWS = ['2d', '3d'] as const;
+export type ViewMode = (typeof VIEWS)[number];
+
 export interface NodeStyle {
   fill?: string;
   stroke?: string;
@@ -39,6 +42,8 @@ export interface NodeStyle {
   bold?: boolean;
   strokeWidth?: number;
   dashed?: boolean;
+  /** 3D 视图中的立体高度，0 / 省略为按图形自动 */
+  depth?: number;
 }
 
 export interface EdgeStyle {
@@ -78,6 +83,10 @@ export interface Diagram {
   /** 空字符串 = 跟随界面主题（导出时按白色处理） */
   background: string;
   direction: Direction;
+  /** 2D 平面图 / 3D 等轴测立体图 */
+  view?: ViewMode;
+  /** 3D 视角，按 90° 旋转的步数 0–3 */
+  rotation?: number;
   nodes: DiagramNode[];
   edges: DiagramEdge[];
 }
@@ -90,6 +99,7 @@ export const DEFAULT_NODE_STYLE: Required<NodeStyle> = {
   bold: false,
   strokeWidth: 1.5,
   dashed: false,
+  depth: 0,
 };
 
 export const DEFAULT_GROUP_STYLE: Required<NodeStyle> = {
@@ -100,6 +110,7 @@ export const DEFAULT_GROUP_STYLE: Required<NodeStyle> = {
   bold: true,
   strokeWidth: 1.25,
   dashed: false,
+  depth: 0,
 };
 
 export const DEFAULT_TEXT_STYLE: Required<NodeStyle> = {
