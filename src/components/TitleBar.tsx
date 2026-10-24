@@ -1,5 +1,5 @@
 import {
-  ChevronDown, ClipboardCopy, Download, FileCode2, FileImage, FileJson, FilePlus, FileText, FileType, FolderOpen,
+  ChevronDown, ClipboardCopy, Download, FileCode2, FileImage, FileJson, FilePlus, FileText, FileType, FolderCode, FolderOpen,
   Moon, Settings as SettingsIcon, Shapes, Sun, Trash, Upload,
 } from 'lucide-react';
 import { useRef, useState } from 'react';
@@ -20,7 +20,7 @@ function timeAgo(t: number) {
   return new Date(t).toLocaleDateString();
 }
 
-export function TitleBar(props: { theme: 'light' | 'dark'; onToggleTheme(): void; onOpenSettings(): void }) {
+export function TitleBar(props: { theme: 'light' | 'dark'; onToggleTheme(): void; onOpenSettings(): void; onAnalyzeCode(): void }) {
   const title = useEditor((s) => s.title);
   const docId = useEditor((s) => s.docId);
   const busy = useEditor((s) => s.busy);
@@ -130,6 +130,10 @@ export function TitleBar(props: { theme: 'light' | 'dark'; onToggleTheme(): void
 
       <div className="tb-spacer" />
 
+      <button className="btn btn-sm tb-hide-sm" onClick={props.onAnalyzeCode} disabled={busy} title="选择本地代码文件夹，让 Claude 分析并画出结构图">
+        <FolderCode size={14} />
+        分析代码
+      </button>
       <button className="btn btn-sm tb-hide-sm" onClick={() => fileInput.current?.click()} title="打开 .json / .drawio 文件">
         <Upload size={14} />
         打开

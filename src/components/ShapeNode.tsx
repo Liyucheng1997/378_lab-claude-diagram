@@ -1,7 +1,9 @@
 import { Handle, NodeResizer, Position, type NodeProps } from '@xyflow/react';
+import { CodeXml } from 'lucide-react';
 import { memo, useEffect, useRef, useState } from 'react';
 import type { ShapeRFNode } from '../lib/convert';
 import { ICONS } from '../lib/icons';
+import { useCode } from '../code/store';
 import { labelBox, shapePrimitives, type Primitive } from '../lib/shapes';
 import { nodeStyle } from '../lib/types';
 import { useEditor } from '../store';
@@ -24,6 +26,10 @@ export function ShapeSVG(props: { prims: Primitive[]; fill: string; stroke: stri
       })}
     </>
   );
+}
+
+function refTitle(r: NonNullable<ShapeRFNode['data']['ref']>) {
+  return `${r.path}${r.line ? ':' + r.line : ''}${r.note ? '\n' + r.note : ''}\n点击查看代码`;
 }
 
 const SIDES = [Position.Top, Position.Right, Position.Bottom, Position.Left];
@@ -55,7 +61,12 @@ function ShapeNodeImpl({ id, data, selected, width, height }: NodeProps<ShapeRFN
   };
 
   return (
-    <div className={`shape-node shape-${data.shape}`} style={{ width: w, height: h }} onDoubleClick={() => setEditing(true)}>
+    <div
+      className={`shape-node shape-${data.shape}` + (data.ref ? ' has-ref' : '')}
+      style={{ width: w, height: h }}
+      onDoubleClick={() => setEditing(true)}
+      title={data.ref && !editing ? refTitle(data.ref) : undefined}
+    >
       <NodeResizer
         isVisible={!!selected}
         minWidth={data.shape === 'text' ? 30 : 40}
@@ -98,6 +109,18 @@ function ShapeNodeImpl({ id, data, selected, width, height }: NodeProps<ShapeRFN
           data.label && <span className="label-text">{data.label}</span>
         )}
       </div>
+      {data.ref && (
+        <button
+          className="ref-badge nodrag"
+          aria-label="查看代码"
+          onClick={(e) => {
+            e.stopPropagation();
+            useCode.getState().openPeek({ ref: data.ref!, label: data.label, nodeId: id });
+          }}
+        >
+          <CodeXml size={11} strokeWidth={2.2} />
+        </button>
+      )}
       {SIDES.map((p) => (
         <Handle key={p} id={p} type="source" position={p} className="hd" />
       ))}

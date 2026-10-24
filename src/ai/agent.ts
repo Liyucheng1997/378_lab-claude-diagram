@@ -3,11 +3,11 @@ import type {
   BetaContentBlockParam,
   BetaMessageParam,
   BetaMessageStreamParams,
+  BetaTextBlockParam,
+  BetaToolUnion,
   BetaToolResultBlockParam,
   BetaToolUseBlock,
 } from '@anthropic-ai/sdk/resources/beta/messages/messages';
-import { SYSTEM_PROMPT } from './prompt';
-import { TOOLS } from './tools';
 import type { Settings } from './types';
 
 export interface TurnCallbacks {
@@ -62,6 +62,10 @@ export async function runTurn(opts: {
   signal: AbortSignal;
   cb: TurnCallbacks;
   execute: ToolExecutor;
+  system: string[];
+  tools: BetaToolUnion[];
+  /** 工具循环的最大轮数（代码分析需要多轮阅读） */
+  maxRounds?: number;
 }): Promise<TurnResult> {
   const { settings, signal, cb } = opts;
   const client = makeClient(settings);
@@ -69,14 +73,21 @@ export async function runTurn(opts: {
   const working: BetaMessageParam[] = [...opts.history, { role: 'user', content: opts.userContent }];
   const fallback = settings.fallback && supportsFallback(settings.model);
   let jsonRetries = 0;
+  // 缓存断点放在最后一段系统提示上
+  const system: BetaTextBlockParam[] = opts.system.map((text, i) =>
+    i === opts.system.length - 1 ? { type: 'text', text, cache_control: { type: 'ephemeral' } } : { type: 'text', text },
+  );
+  const maxRounds = opts.maxRounds ?? 10;
 
   try {
-    for (let round = 0; round < 10; round++) {
+    for (let round = 0; round < maxRounds; round++) {
       const params: BetaMessageStreamParams = {
         model: settings.model,
         max_tokens: 64000,
-        system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
-        tools: TOOLS,
+        system,
+        tools: opts.tools,
+        // 最后一轮不再允许调用工具，让模型先给出阶段性结论
+        ...(round === maxRounds - 1 ? { tool_choice: { type: 'none' as const } } : {}),
         messages: working,
         thinking: { type: 'adaptive', display: settings.showThinking ? 'summarized' : 'omitted' },
         output_config: { effort: settings.effort },
@@ -144,7 +155,7 @@ export async function runTurn(opts: {
       working.push({ role: 'user', content: results });
       consistent = [...working];
     }
-    return { history: working, stop: 'done' };
+    throw new Error(`工具调用超过 ${maxRounds} 轮仍未完成，已停止。可以让 Claude 缩小范围后继续。`);
   } catch (err) {
     const aborted = err instanceof Anthropic.APIUserAbortError || signal.aborted;
     throw new TurnError(aborted ? '已停止' : describeError(err), consistent, aborted);

@@ -13,9 +13,13 @@ import {
 } from '@xyflow/react';
 import { Map as MapIcon, Maximize, Minus, Plus } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, type DragEvent } from 'react';
+import { openInEditor } from '../code/editor';
+import { useCode } from '../code/store';
 import type { ShapeRFNode, SmartRFEdge } from '../lib/convert';
+import { loadSettings } from '../lib/storage';
 import { nodeStyle, type ShapeType } from '../lib/types';
 import { useEditor } from '../store';
+import { CodePeek } from './CodePeek';
 import { ShapeNode } from './ShapeNode';
 import { SmartEdge } from './SmartEdge';
 import { Toolbar } from './Toolbar';
@@ -87,6 +91,16 @@ export function Canvas(props: { theme: 'light' | 'dark' }) {
     [rf],
   );
 
+  /** 代码面板浮在画布右侧，若挡住了刚点击的节点就把画布向左平移 */
+  const revealBesidePeek = (id: string) =>
+    requestAnimationFrame(() => {
+      const peek = document.querySelector('.code-peek')?.getBoundingClientRect();
+      const el = document.querySelector(`.react-flow__node[data-id="${CSS.escape(id)}"]`)?.getBoundingClientRect();
+      if (!peek || !el || el.right + 24 <= peek.left) return;
+      const vp = rf.getViewport();
+      rf.setViewport({ ...vp, x: vp.x - (el.right + 40 - peek.left) }, { duration: 300 });
+    });
+
   const onDrop = (e: DragEvent) => {
     const raw = e.dataTransfer.getData(DND_MIME);
     if (!raw) return;
@@ -116,6 +130,18 @@ export function Canvas(props: { theme: 'light' | 'dark' }) {
         onNodeDragStop={(_, __, nodes) => reparent(nodes)}
         onSelectionDragStop={(_, nodes) => reparent(nodes)}
         onEdgeDoubleClick={(_, edge: Edge) => useEditor.getState().setEditingEdge(edge.id)}
+        onNodeClick={(e, node) => {
+          // 带代码位置的节点：单击查看代码，Alt+单击直接在编辑器中打开
+          const ref = node.data.ref;
+          if (!ref || e.shiftKey || e.ctrlKey || e.metaKey) return;
+          const root = useEditor.getState().project?.rootPath;
+          if (e.altKey && root) openInEditor(loadSettings().editor, root, ref.path, ref.line);
+          else {
+            useCode.getState().openPeek({ ref, label: node.data.label, nodeId: node.id });
+            revealBesidePeek(node.id);
+          }
+        }}
+        onPaneClick={() => useCode.getState().closePeek()}
         onDragOver={(e) => {
           if (e.dataTransfer.types.includes(DND_MIME)) {
             e.preventDefault();
@@ -159,6 +185,7 @@ export function Canvas(props: { theme: 'light' | 'dark' }) {
         )}
       </ReactFlow>
       <Toolbar />
+      <CodePeek />
       <ZoomControls minimap={minimap} onToggleMinimap={() => setMinimap(!minimap)} />
       {s.nodes.length === 0 && <EmptyHint />}
     </div>

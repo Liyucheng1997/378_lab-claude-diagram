@@ -1,5 +1,6 @@
 import type { BetaMessageParam } from '@anthropic-ai/sdk/resources/beta/messages/messages';
 import { DEFAULT_SETTINGS, type ChatItem, type Settings } from '../ai/types';
+import type { ProjectMeta } from '../code/types';
 import type { Diagram } from './types';
 
 // 所有数据只保存在当前浏览器的 localStorage 中。
@@ -17,6 +18,7 @@ export interface DocRecord {
   chat: ChatItem[];
   /** 发送给 API 的原始对话历史；为保证历史不被改写，存不下时整体不存 */
   apiHistory?: BetaMessageParam[];
+  project?: ProjectMeta;
   updatedAt: number;
 }
 

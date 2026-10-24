@@ -24,6 +24,7 @@ export function importJSON(text: string, fallbackTitle = '导入的图表'): Dia
     width: Number(n.width) || 160,
     height: Number(n.height) || 64,
     style: n.style ?? {},
+    ...(n.ref && typeof n.ref.path === 'string' ? { ref: n.ref } : {}),
   }));
   const edges: DiagramEdge[] = (d.edges ?? []).map((e: Partial<DiagramEdge>, i: number) => ({
     id: String(e.id ?? 'e' + i),

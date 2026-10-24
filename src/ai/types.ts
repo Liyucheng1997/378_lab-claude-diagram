@@ -1,3 +1,5 @@
+import type { EditorKind } from '../code/types';
+
 export interface ToolActivity {
   id: string;
   name: string;
@@ -33,6 +35,8 @@ export interface Settings {
   baseURL: string;
   fallback: boolean;
   showThinking: boolean;
+  /** 代码分析：点击节点后用哪个编辑器打开 */
+  editor: EditorKind;
 }
 
 export const MODELS = [
@@ -49,6 +53,7 @@ export const DEFAULT_SETTINGS: Settings = {
   baseURL: '',
   fallback: true,
   showThinking: true,
+  editor: 'vscode',
 };
 
 export function modelName(id: string) {

@@ -1,11 +1,13 @@
 import { ReactFlowProvider, useViewport } from '@xyflow/react';
-import { PanelLeft, PanelRight, Sparkles, SlidersHorizontal } from 'lucide-react';
+import { FolderCode, PanelLeft, PanelRight, Sparkles, SlidersHorizontal } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { Settings } from '../ai/types';
+import { reconnectProject, useCode } from '../code/store';
 import { loadSettings, loadTheme, saveSettings, saveTheme } from '../lib/storage';
 import { onSaveState, saveNow } from '../persist';
 import { useEditor } from '../store';
 import { Canvas } from './Canvas';
+import { CodeAnalysisDialog } from './CodeAnalysisDialog';
 import { ChatPanel } from './ChatPanel';
 import { SettingsDialog } from './SettingsDialog';
 import { ShapePanel } from './ShapePanel';
@@ -44,6 +46,8 @@ function StatusBar() {
   const busy = useEditor((s) => s.busy);
   const { zoom } = useViewport();
   const [saved, setSaved] = useState(true);
+  const project = useEditor((s) => s.project);
+  const loaded = useCode((s) => (s.project && s.project.name === project?.name ? s.project : null));
   useEffect(() => onSaveState(setSaved), []);
   return (
     <footer className="statusbar">
@@ -51,6 +55,17 @@ function StatusBar() {
         {nodes} 个图形 · {edges} 条连线
       </span>
       <span className="tabular">{Math.round(zoom * 100)}%</span>
+      {project && (
+        <button
+          className="status proj-status"
+          title={loaded ? `${loaded.files.size} 个文件 · ${loaded.totalLines.toLocaleString()} 行` : '点击重新连接项目'}
+          onClick={() => !loaded && reconnectProject(project.name, true).catch(() => undefined)}
+        >
+          <FolderCode size={13} />
+          {project.name}
+          <span className={'dot ' + (loaded ? 'ok' : 'warn')} />
+        </button>
+      )}
       <span className="tb-spacer" />
       {busy && (
         <span className="status">
@@ -70,6 +85,8 @@ export function App() {
   const [settings, setSettings] = useState<Settings>(loadSettings);
   const [theme, setTheme] = useState<'light' | 'dark'>(loadTheme);
   const [showSettings, setShowSettings] = useState(false);
+  const [showAnalyze, setShowAnalyze] = useState(false);
+  const project = useEditor((s) => s.project);
   const [tab, setTab] = useState<'ai' | 'style'>('ai');
   const [leftOpen, setLeftOpen] = useState(() => window.innerWidth > 1100);
   const [rightOpen, setRightOpen] = useState(true);
@@ -79,6 +96,17 @@ export function App() {
     document.documentElement.dataset.theme = theme;
     saveTheme(theme);
   }, [theme]);
+
+  // 切换到关联了代码项目的图表时，若浏览器仍保留文件夹授权则静默加载
+  useEffect(() => {
+    if (project) reconnectProject(project.name, false).catch(() => undefined);
+  }, [project?.name]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const openAnalyze = () => {
+    setRightOpen(true);
+    setTab('ai');
+    setShowAnalyze(true);
+  };
 
   // 首次使用时提示填写 Key
   useEffect(() => {
@@ -90,7 +118,12 @@ export function App() {
 
   return (
     <ReactFlowProvider>
-      <TitleBar theme={theme} onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')} onOpenSettings={() => setShowSettings(true)} />
+      <TitleBar
+        theme={theme}
+        onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+        onOpenSettings={() => setShowSettings(true)}
+        onAnalyzeCode={openAnalyze}
+      />
       <main className={'workspace' + (leftOpen ? '' : ' no-left') + (rightOpen ? '' : ' no-right')}>
         {leftOpen && <ShapePanel />}
         <div className="center">
@@ -115,7 +148,7 @@ export function App() {
               />
             </div>
             <div className="side-body">
-              {tab === 'ai' ? <ChatPanel settings={settings} onOpenSettings={() => setShowSettings(true)} /> : <StylePanel />}
+              {tab === 'ai' ? <ChatPanel settings={settings} onOpenSettings={() => setShowSettings(true)} onAnalyzeCode={openAnalyze} /> : <StylePanel />}
             </div>
           </aside>
         )}
@@ -132,6 +165,7 @@ export function App() {
           }}
         />
       )}
+      {showAnalyze && <CodeAnalysisDialog settings={settings} onClose={() => setShowAnalyze(false)} onOpenSettings={() => setShowSettings(true)} />}
       <ToastHost />
     </ReactFlowProvider>
   );

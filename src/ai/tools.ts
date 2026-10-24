@@ -1,5 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
+import { CodeRefZ, type CodeRefInput } from '../code/tools';
+import type { CodeRef } from '../code/types';
 import { ICONS, ICON_NAMES } from '../lib/icons';
 import { autoLayout } from '../lib/layout';
 import { autoSize } from '../lib/shapes';
@@ -43,6 +45,7 @@ const NodeInZ = z.object({
   width: z.number().optional().describe('宽度，省略则按文字自动计算'),
   height: z.number().optional(),
   style: NodeStyleZ.optional(),
+  ref: CodeRefZ.optional().describe('仅代码分析模式：该节点对应的代码位置，用户点击节点会跳转到这里'),
 });
 
 const EdgeInZ = z.object({
@@ -67,6 +70,7 @@ const NodeUpdateZ = NodeInZ.partial()
     id: z.string().describe('要修改的节点 id'),
     parent: z.string().nullable().optional().describe('新的分组 id；null 表示移出分组'),
     style: NodeStyleZ.optional().describe('只需给出要改的样式字段，会与原样式合并'),
+    ref: CodeRefZ.nullable().optional().describe('新的代码位置；null 表示移除'),
   });
 
 const EdgeUpdateZ = EdgeInZ.partial().extend({
@@ -125,6 +129,17 @@ export const TOOLS = [
 
 // ---------- 执行 ----------
 
+/** 校验节点的代码位置（由调用方注入，依赖当前加载的项目） */
+export type RefResolver = (r: CodeRefInput) => { ref?: CodeRef; warning?: string };
+
+const keepRef: RefResolver = (r) => ({ ref: { path: r.path, line: r.line, endLine: r.end_line, symbol: r.symbol, note: r.note } });
+
+function applyRef(r: CodeRefInput, resolve: RefResolver, warnings: string[]): CodeRef | undefined {
+  const out = resolve(r);
+  if (out.warning) warnings.push(out.warning);
+  return out.ref;
+}
+
 export interface ToolOutcome {
   diagram: Diagram;
   summary: string;
@@ -139,7 +154,7 @@ function normIcon(icon: string | undefined, warnings: string[]) {
   return undefined;
 }
 
-function buildNode(n: z.infer<typeof NodeInZ>, warnings: string[]): DiagramNode & { _placed: boolean } {
+function buildNode(n: z.infer<typeof NodeInZ>, warnings: string[], resolve: RefResolver): DiagramNode & { _placed: boolean } {
   const shape = n.shape ?? 'rounded';
   const icon = normIcon(n.icon, warnings);
   const st = nodeStyle(shape, n.style);
@@ -155,6 +170,7 @@ function buildNode(n: z.infer<typeof NodeInZ>, warnings: string[]): DiagramNode 
     width: n.width ?? aw,
     height: n.height ?? ah,
     style: { ...n.style },
+    ...(n.ref ? { ref: applyRef(n.ref, resolve, warnings) } : {}),
     _placed: n.x !== undefined && n.y !== undefined,
   };
 }
@@ -248,11 +264,11 @@ function placeNear(n: DiagramNode, all: DiagramNode[], edges: DiagramEdge[], d: 
   }
 }
 
-export async function runCreate(input: CreateDiagramInput, current: Diagram): Promise<ToolOutcome> {
+export async function runCreate(input: CreateDiagramInput, current: Diagram, resolve: RefResolver = keepRef): Promise<ToolOutcome> {
   const warnings: string[] = [];
   const seen = new Set<string>();
   const built = input.nodes.map((n) => {
-    const b = buildNode(n, warnings);
+    const b = buildNode(n, warnings, resolve);
     if (seen.has(b.id)) {
       warnings.push(`节点 id "${b.id}" 重复，已重命名`);
       b.id = b.id + '_' + Math.random().toString(36).slice(2, 5);
@@ -286,7 +302,7 @@ export async function runCreate(input: CreateDiagramInput, current: Diagram): Pr
   };
 }
 
-export async function runEdit(input: EditDiagramInput, current: Diagram): Promise<ToolOutcome> {
+export async function runEdit(input: EditDiagramInput, current: Diagram, resolve: RefResolver = keepRef): Promise<ToolOutcome> {
   const warnings: string[] = [];
   let nodes = current.nodes.map((n) => ({ ...n, style: { ...n.style } }));
   let edges = current.edges.map((e) => ({ ...e, style: { ...e.style } }));
@@ -351,6 +367,8 @@ export async function runEdit(input: EditDiagramInput, current: Diagram): Promis
     if (u.width !== undefined) n.width = u.width;
     if (u.height !== undefined) n.height = u.height;
     if (u.style) n.style = { ...n.style, ...u.style };
+    if (u.ref === null) delete n.ref;
+    else if (u.ref) n.ref = applyRef(u.ref, resolve, warnings);
   }
 
   // 4. 修改连线
@@ -371,7 +389,7 @@ export async function runEdit(input: EditDiagramInput, current: Diagram): Promis
 
   // 5. 新增节点与连线
   const added = (input.add_nodes ?? []).map((n) => {
-    const b = buildNode(n, warnings);
+    const b = buildNode(n, warnings, resolve);
     if (nodes.some((x) => x.id === b.id)) {
       const old = b.id;
       b.id = b.id + '_' + Math.random().toString(36).slice(2, 5);
@@ -440,6 +458,7 @@ export function diagramForPrompt(d: Diagram): string {
       width: n.width,
       height: n.height,
       style: Object.keys(n.style).length ? n.style : undefined,
+      ref: n.ref ? { path: n.ref.path, line: n.ref.line, symbol: n.ref.symbol } : undefined,
     })),
     edges: d.edges.map((e) => ({
       id: e.id,

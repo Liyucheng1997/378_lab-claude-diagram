@@ -1,7 +1,8 @@
 import type { Edge, Node } from '@xyflow/react';
+import type { CodeRef } from '../code/types';
 import type { Diagram, DiagramEdge, DiagramNode, EdgeStyle, NodeStyle, ShapeType } from './types';
 
-export type ShapeData = { label: string; shape: ShapeType; icon?: string; style: NodeStyle };
+export type ShapeData = { label: string; shape: ShapeType; icon?: string; style: NodeStyle; ref?: CodeRef };
 export type ShapeRFNode = Node<ShapeData, 'shape'>;
 export type EdgeData = { label?: string; style: EdgeStyle };
 export type SmartRFEdge = Edge<EdgeData, 'smart'>;
@@ -53,6 +54,7 @@ export function toModel(
       style: { ...n.data.style },
     };
     if (n.data.icon) out.icon = n.data.icon;
+    if (n.data.ref) out.ref = { ...n.data.ref };
     if (n.parentId && ids.has(n.parentId)) out.parent = n.parentId;
     return out;
   });
@@ -119,7 +121,7 @@ export function fromModel(d: Diagram): { nodes: ShapeRFNode[]; edges: SmartRFEdg
       position: { x: n.x - (parent?.x ?? 0), y: n.y - (parent?.y ?? 0) },
       width: n.width,
       height: n.height,
-      data: { label: n.label, shape: n.shape, icon: n.icon, style: { ...n.style } },
+      data: { label: n.label, shape: n.shape, icon: n.icon, style: { ...n.style }, ...(n.ref ? { ref: { ...n.ref } } : {}) },
     };
     if (parent) rf.parentId = parent.id;
     return rf;

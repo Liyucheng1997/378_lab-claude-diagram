@@ -1,3 +1,5 @@
+import type { CodeRef } from '../code/types';
+
 // 图表的"文档模型"：坐标一律为画布绝对坐标（左上角为原点）。
 // React Flow 的节点状态与它互相转换（见 convert.ts），AI 工具与导入导出都只认这个模型。
 
@@ -59,6 +61,8 @@ export interface DiagramNode {
   width: number;
   height: number;
   style: NodeStyle;
+  /** 代码分析：节点对应的代码位置，点击跳转 */
+  ref?: CodeRef;
 }
 
 export interface DiagramEdge {

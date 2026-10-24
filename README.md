@@ -29,6 +29,14 @@ npm run build
 - 模型可选 Opus 5.5（默认）、Fable 5.1、Sonnet 5.5、Haiku 5.5 或自定义模型 ID；可调思考深度（effort）
 - 支持自定义 API 地址（代理需要允许浏览器跨域）
 
+**AI 分析项目代码**
+- 点顶栏「分析代码」选择本地项目文件夹：整体架构、模块依赖、核心流程（调用链）、数据模型、目录导览，或自定义要求
+- 先在浏览器本地扫描出目录树、符号（函数 / 类 / 接口及行号）和文件间 import 关系，再让 Claude 用 `read_file` / `search_code` / `list_files` 按需阅读代码后画图
+- 图中每个代码节点都带有代码位置（右上角蓝色 `</>` 标记）：单击节点在右侧代码面板中打开对应文件并高亮这段代码；分组节点可指向目录
+- 填写项目的本机路径后可一键在 VS Code / Cursor / JetBrains 中打开（Alt+单击节点直接打开）；回复里的 `路径:行号` 也可点击跳转
+- 可继续对话："展开 xx 模块""画出 xx 功能的调用链"；Chrome / Edge 下刷新后一键重新连接文件夹
+- 代码只在浏览器内存中读取，不经过中间服务器；发给 Claude API 的是项目大纲（目录树、符号名与行号）和 Claude 主动读取 / 搜索到的代码
+
 **画布编辑（draw.io 式）**
 - 15 种图形 + 70 多个图标节点，拖入或点击添加
 - 拖动连接点连线，连线自动贴合最近的边；4 种线型、箭头方向、虚线、流动动画
@@ -57,6 +65,8 @@ API Key 只保存在当前浏览器的 localStorage 中，请求由浏览器直�
 | 图表模型 ↔ React Flow 转换 | `src/lib/convert.ts` |
 | 自动布局（ELK） | `src/lib/layout.ts` |
 | 导出 / 导入 | `src/lib/exporters.ts`、`src/lib/importers.ts` |
+| 代码分析：读取文件夹、静态索引、项目大纲、只读代码工具 | `src/code/` |
+| 代码面板与分析对话框 | `src/components/CodePeek.tsx`、`src/components/CodeAnalysisDialog.tsx` |
 | 界面 | `src/components/` |
 
 - 每次请求都在用户消息里附上当前画布的 JSON 快照，因此你在两轮对话之间手动改过的内容 Claude 都能看到；对话历史只追加不改写，系统提示固定以命中提示缓存。

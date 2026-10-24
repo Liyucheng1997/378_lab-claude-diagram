@@ -1,7 +1,9 @@
-import { ArrowUp, Brain, ChevronRight, ImagePlus, KeyRound, MessageSquarePlus, RotateCcw, Sparkles, Square, X } from 'lucide-react';
+import { ArrowUp, Brain, ChevronRight, FolderCode, ImagePlus, KeyRound, MessageSquarePlus, RefreshCw, RotateCcw, Sparkles, Square, X } from 'lucide-react';
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { fileToAttachment, retry, sendMessage, stopGeneration, type ImageAttachment } from '../ai/session';
 import { modelName, type ChatItem, type Settings, type ToolActivity } from '../ai/types';
+import { reconnectProject, useCode } from '../code/store';
+import { CODE_TOOL_NAMES } from '../code/tools';
 import { useEditor } from '../store';
 import { Confirm, toast } from './ui';
 
@@ -15,6 +17,36 @@ const STARTERS = [
 ];
 
 const QUICK = ['换一套商务风配色', '改成从左到右排版', '给每个节点加上合适的图标', '把文字全部翻译成英文', '加一个图例说明'];
+const CODE_QUICK = ['展开最核心模块的内部结构', '画出主流程的调用链', '解释选中节点的代码', '标出可能的问题和改进点', '换一套商务风配色'];
+
+const TOOL_RUNNING: Record<string, string> = {
+  create_diagram: '正在绘制图表',
+  edit_diagram: '正在修改图表',
+  read_file: '正在阅读代码',
+  search_code: '正在搜索代码',
+  list_files: '正在浏览文件',
+};
+
+/** `src/a.ts:12` 这类代码位置可点击，在代码面板中打开 */
+const LOC_RE = /^([\w@.-]+(?:\/[\w@.[\]()-]+)*\.\w+)(?::(\d+)(?:[-–](\d+))?)?$/;
+
+function CodeSpan({ text }: { text: string }) {
+  const hasProject = useEditor((s) => !!s.project);
+  const m = hasProject ? LOC_RE.exec(text.trim()) : null;
+  if (!m) return <code>{text}</code>;
+  const line = m[2] ? Number(m[2]) : undefined;
+  const endLine = m[3] ? Number(m[3]) : undefined;
+  return (
+    <code
+      className="code-link"
+      role="link"
+      title="查看代码"
+      onClick={() => useCode.getState().openPeek({ ref: { path: m[1], line, endLine } })}
+    >
+      {text}
+    </code>
+  );
+}
 
 /** 极简 Markdown：**粗体**、`代码`、列表符号保持原样 */
 function RichText({ text }: { text: string }) {
@@ -25,27 +57,62 @@ function RichText({ text }: { text: string }) {
   while ((m = re.exec(text))) {
     if (m.index > last) parts.push(text.slice(last, m.index));
     const t = m[0];
-    parts.push(t.startsWith('**') ? <strong key={m.index}>{t.slice(2, -2)}</strong> : <code key={m.index}>{t.slice(1, -1)}</code>);
+    parts.push(t.startsWith('**') ? <strong key={m.index}>{t.slice(2, -2)}</strong> : <CodeSpan key={m.index} text={t.slice(1, -1)} />);
     last = m.index + t.length;
   }
   parts.push(text.slice(last));
   return <div className="msg-text">{parts.map((p, i) => <Fragment key={i}>{p}</Fragment>)}</div>;
 }
 
-/** 按发生顺序把正文切开，在中间插入工具卡片 */
-function segments(item: ChatItem): (string | ToolActivity)[] {
-  const out: (string | ToolActivity)[] = [];
+/** 按发生顺序把正文切开，在中间插入工具卡片；连续的读代码操作合并成一行 */
+function segments(item: ChatItem): (string | ToolActivity | ToolActivity[])[] {
+  const out: (string | ToolActivity | ToolActivity[])[] = [];
   let pos = 0;
   for (const t of [...(item.tools ?? [])].sort((a, b) => (a.at ?? 0) - (b.at ?? 0))) {
     const at = Math.min(t.at ?? item.text.length, item.text.length);
     const chunk = item.text.slice(pos, at).trim();
     if (chunk) out.push(chunk);
-    out.push(t);
+    const last = out[out.length - 1];
+    if (!CODE_TOOL_NAMES.has(t.name)) out.push(t);
+    else if (Array.isArray(last)) last.push(t);
+    else out.push([t]);
     pos = Math.max(pos, at);
   }
   const rest = item.text.slice(pos).trim();
   if (rest) out.push(rest);
   return out;
+}
+
+/** 读代码的操作通常很多：折叠成一行摘要，展开后列出每一步 */
+function CodeToolRow({ tools }: { tools: ToolActivity[] }) {
+  const [open, setOpen] = useState(false);
+  const running = tools.find((t) => t.status === 'running');
+  const reads = tools.filter((t) => t.name === 'read_file').length;
+  const searches = tools.filter((t) => t.name === 'search_code').length;
+  const lists = tools.length - reads - searches;
+  const errors = tools.filter((t) => t.status === 'error').length;
+  const parts = [reads && `阅读 ${reads} 次`, searches && `搜索 ${searches} 次`, lists && `浏览 ${lists} 次`].filter(Boolean);
+  return (
+    <div className="code-tools">
+      <button className={`tool-chip tool-${running ? 'running' : errors === tools.length ? 'error' : 'done'}`} onClick={() => setOpen(!open)}>
+        <span className="dot" />
+        <span className="tool-name">
+          {running ? TOOL_RUNNING[running.name] + '…' : '查看了代码'} · {parts.join('，')}
+        </span>
+        <ChevronRight size={13} className={'chev' + (open ? ' open' : '')} />
+      </button>
+      {open && (
+        <div className="code-tool-list">
+          {tools.map((t) => (
+            <div key={t.id} className={'ctl-item tool-' + t.status}>
+              <span className="dot" />
+              <span>{t.status === 'running' ? TOOL_RUNNING[t.name] + '…' : t.summary ?? '完成'}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function AssistantMessage({ item, settings }: { item: ChatItem; settings: Settings }) {
@@ -71,12 +138,14 @@ function AssistantMessage({ item, settings }: { item: ChatItem; settings: Settin
         {segments(item).map((seg, i) =>
           typeof seg === 'string' ? (
             <RichText key={i} text={seg} />
+          ) : Array.isArray(seg) ? (
+            <CodeToolRow key={seg[0].id} tools={seg} />
           ) : (
             <div key={seg.id} className={`tool-chip tool-${seg.status}`}>
               <span className="dot" />
               <span className="tool-name">
                 {seg.status === 'running'
-                  ? (seg.name === 'create_diagram' ? '正在绘制图表' : '正在修改图表') + (seg.chars ? ` · ${(seg.chars / 1000).toFixed(1)}k` : '…')
+                  ? (TOOL_RUNNING[seg.name] ?? '正在处理') + (seg.chars ? ` · ${(seg.chars / 1000).toFixed(1)}k` : '…')
                   : seg.summary ?? (seg.status === 'error' ? '操作失败' : '完成')}
               </span>
             </div>
@@ -111,11 +180,14 @@ function AssistantMessage({ item, settings }: { item: ChatItem; settings: Settin
   );
 }
 
-export function ChatPanel(props: { settings: Settings; onOpenSettings(): void }) {
+export function ChatPanel(props: { settings: Settings; onOpenSettings(): void; onAnalyzeCode(): void }) {
   const { settings } = props;
   const chat = useEditor((s) => s.chat);
   const busy = useEditor((s) => s.busy);
   const hasNodes = useEditor((s) => s.nodes.length > 0);
+  const project = useEditor((s) => s.project);
+  const loadedName = useCode((s) => s.project?.name);
+  const scanning = useCode((s) => s.scanning);
   const selCount = useEditor((s) => s.nodes.filter((n) => n.selected).length + s.edges.filter((e) => e.selected).length);
   const [text, setText] = useState('');
   const [images, setImages] = useState<ImageAttachment[]>([]);
@@ -167,10 +239,36 @@ export function ChatPanel(props: { settings: Settings; onOpenSettings(): void })
           <span className={'dot ' + (noKey ? 'warn' : 'ok')} />
           {noKey ? '未设置 API Key' : modelName(settings.model)}
         </button>
-        <button className="icon-btn" onClick={() => chat.length && setConfirmClear(true)} title="新对话" aria-label="新对话" disabled={busy}>
-          <MessageSquarePlus size={16} />
-        </button>
+        <div className="chat-head-actions">
+          <button className="icon-btn" onClick={props.onAnalyzeCode} title="AI 分析项目代码" aria-label="AI 分析项目代码" disabled={busy}>
+            <FolderCode size={16} />
+          </button>
+          <button className="icon-btn" onClick={() => chat.length && setConfirmClear(true)} title="新对话" aria-label="新对话" disabled={busy}>
+            <MessageSquarePlus size={16} />
+          </button>
+        </div>
       </div>
+      {project && loadedName !== project.name && (
+        <div className="proj-banner">
+          <FolderCode size={14} />
+          <span>{scanning !== null ? `正在读取「${project.name}」… ${scanning}` : `项目「${project.name}」的代码未加载，Claude 暂时读不到代码`}</span>
+          {scanning === null && (
+            <button
+              className="btn btn-sm btn-ghost"
+              onClick={async () => {
+                try {
+                  const p = await reconnectProject(project.name, true);
+                  if (p && p.name !== project.name) toast(`打开的是「${p.name}」，与图表关联的「${project.name}」不同`, 'error');
+                } catch (e) {
+                  toast('打开失败：' + (e instanceof Error ? e.message : String(e)), 'error');
+                }
+              }}
+            >
+              <RefreshCw size={12} /> 重新连接
+            </button>
+          )}
+        </div>
+      )}
 
       <div
         className="chat-list"
@@ -188,6 +286,12 @@ export function ChatPanel(props: { settings: Settings; onOpenSettings(): void })
             </div>
             <div className="ce-sub">支持流程图、架构图、网络拓扑、组织架构、状态机等；也可以上传草图照片让它还原。</div>
             <div className="starter-list">
+              <button className="starter starter-code" onClick={props.onAnalyzeCode}>
+                <span className="starter-title">
+                  <FolderCode size={14} /> 分析项目代码
+                </span>
+                <span className="starter-text">选择本地代码文件夹，Claude 阅读代码后画出架构图、依赖图或调用链，点击节点即可跳转到对应代码</span>
+              </button>
               {STARTERS.map((s) => (
                 <button key={s.title} className="starter" onClick={() => (noKey ? props.onOpenSettings() : send(s.text))}>
                   <span className="starter-title">{s.title}</span>
@@ -221,7 +325,7 @@ export function ChatPanel(props: { settings: Settings; onOpenSettings(): void })
       <div className="composer-wrap">
         {hasNodes && !busy && chat.length > 0 && (
           <div className="quick-row">
-            {QUICK.map((q) => (
+            {(project ? CODE_QUICK : QUICK).map((q) => (
               <button key={q} className="chip" onClick={() => send(q)}>
                 {q}
               </button>

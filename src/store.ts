@@ -9,6 +9,7 @@ import {
 } from '@xyflow/react';
 import { create } from 'zustand';
 import type { ChatItem } from './ai/types';
+import type { ProjectMeta } from './code/types';
 import { fromModel, sortByDepth, toModel, type EdgeData, type ShapeData, type ShapeRFNode, type SmartRFEdge } from './lib/convert';
 import { SHAPE_META } from './lib/shapes';
 import { currentDocId, loadDoc, setCurrentDocId } from './lib/storage';
@@ -33,6 +34,8 @@ export interface EditorState {
   future: Snap[];
   chat: ChatItem[];
   apiHistory: BetaMessageParam[];
+  /** 图表关联的代码项目（代码分析） */
+  project: ProjectMeta | null;
   editingEdge: string | null;
   /** 自增即触发画布 fitView */
   fitTick: number;
@@ -62,6 +65,7 @@ export interface EditorState {
   setChat(fn: (c: ChatItem[]) => ChatItem[]): void;
   setApiHistory(h: BetaMessageParam[]): void;
   setBusy(b: boolean): void;
+  setProject(p: ProjectMeta | null): void;
   loadDocument(id: string | null): void;
   newDocument(): void;
 }
@@ -84,6 +88,7 @@ function initialState() {
     edges,
     chat: rec?.chat ?? [],
     apiHistory: rec?.apiHistory ?? [],
+    project: rec?.project ?? null,
   };
 }
 
@@ -263,6 +268,9 @@ export const useEditor = create<EditorState>((set, get) => ({
   setBusy(b) {
     set({ busy: b });
   },
+  setProject(p) {
+    set({ project: p });
+  },
 
   loadDocument(id) {
     const rec = id ? loadDoc(id) : null;
@@ -279,6 +287,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       direction: d.direction,
       chat: rec?.chat ?? [],
       apiHistory: rec?.apiHistory ?? [],
+      project: rec?.project ?? null,
       past: [],
       future: [],
       editingEdge: null,

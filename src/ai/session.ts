@@ -1,9 +1,12 @@
-import type { BetaContentBlockParam } from '@anthropic-ai/sdk/resources/beta/messages/messages';
+import type { BetaContentBlockParam, BetaMessageParam } from '@anthropic-ai/sdk/resources/beta/messages/messages';
 import { z } from 'zod';
+import { buildOutline } from '../code/outline';
+import { useCode } from '../code/store';
+import { CODE_TOOL_NAMES, CODE_TOOLS, resolveRef, runCodeTool } from '../code/tools';
 import { useEditor } from '../store';
 import { runTurn, TurnError } from './agent';
-import { buildUserText } from './prompt';
-import { CreateDiagramZ, diagramForPrompt, EditDiagramZ, runCreate, runEdit } from './tools';
+import { buildUserText, CODE_SYSTEM_PROMPT, SYSTEM_PROMPT } from './prompt';
+import { CreateDiagramZ, diagramForPrompt, EditDiagramZ, runCreate, runEdit, TOOLS, type RefResolver } from './tools';
 import type { ChatItem, Settings, ToolActivity } from './types';
 
 export interface ImageAttachment {
@@ -21,18 +24,20 @@ export function stopGeneration() {
 async function executeTool(name: string, input: unknown): Promise<{ ok: boolean; content: string }> {
   const s = useEditor.getState();
   const current = s.getDiagram();
+  const resolve: RefResolver = (r) => resolveRef(r, useCode.getState().project);
   try {
+    if (CODE_TOOL_NAMES.has(name)) return runCodeTool(name, input, useCode.getState().project);
     if (name === 'create_diagram') {
       const p = CreateDiagramZ.safeParse(input);
       if (!p.success) return { ok: false, content: '参数校验失败，请修正后重试：\n' + z.prettifyError(p.error) };
-      const out = await runCreate(p.data, current);
+      const out = await runCreate(p.data, current, resolve);
       s.setDiagram(out.diagram, { fit: true });
       return { ok: true, content: out.summary + (out.warnings.length ? '\n警告：\n- ' + out.warnings.join('\n- ') : '') };
     }
     if (name === 'edit_diagram') {
       const p = EditDiagramZ.safeParse(input);
       if (!p.success) return { ok: false, content: '参数校验失败，请修正后重试：\n' + z.prettifyError(p.error) };
-      const out = await runEdit(p.data, current);
+      const out = await runEdit(p.data, current, resolve);
       s.setDiagram(out.diagram, { fit: out.fit });
       return { ok: true, content: out.summary + (out.warnings.length ? '\n警告：\n- ' + out.warnings.join('\n- ') : '') };
     }
@@ -75,12 +80,25 @@ function frameBatcher(apply: (fn: (a: ChatItem) => ChatItem) => void) {
 
 const newId = () => Math.random().toString(36).slice(2, 10);
 
+/** 项目大纲只需在对话里出现一次（新对话或换了项目时重新附带） */
+function outlineSent(history: BetaMessageParam[], name: string) {
+  const mark = `<project_outline name="${name}"`;
+  return history.some(
+    (m) => m.role === 'user' && typeof m.content !== 'string' && m.content.some((b) => b.type === 'text' && b.text.startsWith(mark)),
+  );
+}
+
 export async function sendMessage(text: string, images: ImageAttachment[], settings: Settings) {
   const s = useEditor.getState();
   if (s.busy || (!text.trim() && !images.length)) return;
 
   const selection = [...s.nodes.filter((n) => n.selected).map((n) => n.id), ...s.edges.filter((e) => e.selected).map((e) => e.id)];
+  const meta = s.project;
+  const loaded = useCode.getState().project;
+  const codeMode = !!meta;
+  const outline = meta && loaded?.name === meta.name && !outlineSent(s.apiHistory, meta.name) ? buildOutline(loaded) : null;
   const userContent: BetaContentBlockParam[] = [
+    ...(outline ? [{ type: 'text' as const, text: outline }] : []),
     ...images.map((img) => ({ type: 'image' as const, source: { type: 'base64' as const, media_type: img.mediaType, data: img.base64 } })),
     { type: 'text', text: buildUserText(text.trim() || '请把图片里的内容还原成可编辑的图表。', diagramForPrompt(s.getDiagram()), selection) },
   ];
@@ -105,6 +123,9 @@ export async function sendMessage(text: string, images: ImageAttachment[], setti
       userContent,
       signal: controller.signal,
       execute: executeTool,
+      system: codeMode ? [SYSTEM_PROMPT, CODE_SYSTEM_PROMPT] : [SYSTEM_PROMPT],
+      tools: codeMode ? [...TOOLS, ...CODE_TOOLS] : TOOLS,
+      maxRounds: codeMode ? 40 : 10,
       cb: {
         onRound() {
           batch.flush();

@@ -1,6 +1,7 @@
 import { Eye, EyeOff, ShieldCheck } from 'lucide-react';
 import { useState } from 'react';
 import { describeError, testConnection } from '../ai/agent';
+import { EDITORS } from '../code/editor';
 import { MODELS, type Effort, type Settings } from '../ai/types';
 import { Modal, Seg } from './ui';
 
@@ -126,6 +127,12 @@ export function SettingsDialog(props: { settings: Settings; onSave(s: Settings):
             spellCheck={false}
           />
           <div className="field-hint">使用自建代理或兼容网关时填写。代理需要允许浏览器跨域访问。</div>
+        </div>
+
+        <div className="field">
+          <label className="form-label">代码分析 · 在编辑器中打开</label>
+          <Seg value={s.editor} options={EDITORS} onChange={(v) => up({ editor: v })} />
+          <div className="field-hint">点击代码分析图中的节点时，「在编辑器中打开」使用的编辑器（需在分析时填写项目的本机路径）。</div>
         </div>
 
         <label className="form-check">

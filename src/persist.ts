@@ -22,6 +22,7 @@ function flush() {
     chat: s.chat.filter((c) => c.status !== 'streaming'),
     // 对话进行中不保存 API 历史，避免存下半截
     apiHistory: s.busy ? undefined : s.apiHistory,
+    project: s.project ?? undefined,
     updatedAt: Date.now(),
   });
   setCurrentDocId(s.docId);
@@ -36,7 +37,8 @@ export function startAutosave() {
       s.title === prev.title &&
       s.background === prev.background &&
       s.chat === prev.chat &&
-      s.apiHistory === prev.apiHistory
+      s.apiHistory === prev.apiHistory &&
+      s.project === prev.project
     )
       return;
     listeners.forEach((l) => l(false));
